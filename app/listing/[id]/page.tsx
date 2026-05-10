@@ -3,8 +3,8 @@ import { ArrowLeft, ExternalLink, ShieldCheck } from "lucide-react";
 import { formatPrice, conditionLabel, conditionColor, cn } from "@/lib/utils";
 import { formatSubscriberCount, getYouTubeEmbedUrl } from "@/lib/youtube";
 import { Listing } from "@/types";
+import { BuyButton } from "@/components/ui/BuyButton";
 
-// Mock — replace with: const listing = await supabase.from('listings').select('*,creator:users(*)').eq('id', params.id).single()
 async function getListing(id: string): Promise<Listing> {
   return {
     id,
@@ -44,111 +44,6 @@ export default async function ListingPage({ params }: { params: { id: string } }
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10">
-      {/* Back */}
       <Link href="/browse" className="flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-200 transition-colors mb-8">
         <ArrowLeft size={14} /> Back to browse
       </Link>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-
-        {/* Left — Video embed */}
-        <div className="space-y-4">
-          <div className="rounded-2xl overflow-hidden border border-ink-700 aspect-video">
-            <iframe
-              src={getYouTubeEmbedUrl(listing.youtube_video_id, listing.youtube_timestamp_seconds)}
-              title={listing.youtube_video_title}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-accent/5 border border-accent/20">
-            <div className="text-accent mt-0.5">
-              <ShieldCheck size={14} />
-            </div>
-            <p className="text-xs text-ink-400 leading-relaxed">
-              This is the exact unit featured in the video above.{" "}
-              <span className="text-ink-200">The creator&apos;s review is your proof of condition.</span>{" "}
-              No strangers, no guesswork.
-            </p>
-          </div>
-        </div>
-
-        {/* Right — Details */}
-        <div>
-          {/* Category + condition */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="chip text-xs capitalize">{listing.category}</span>
-            <span className={cn("text-[11px] px-2.5 py-0.5 rounded-full font-medium", conditionColor(listing.condition))}>
-              {conditionLabel(listing.condition)}
-            </span>
-          </div>
-
-          <h1 className="text-2xl font-medium text-ink-50 mb-2 leading-snug">
-            {listing.title}
-          </h1>
-
-          {/* Price */}
-          <div className="flex items-baseline gap-3 mb-6">
-            <span className="text-3xl font-medium text-ink-50">
-              {formatPrice(listing.price)}
-            </span>
-            {listing.original_price && (
-              <span className="text-ink-500 line-through text-base">
-                {formatPrice(listing.original_price)}
-              </span>
-            )}
-            {discount && (
-              <span className="text-xs text-accent bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full">
-                {discount}% off retail
-              </span>
-            )}
-          </div>
-
-          {/* Creator */}
-          <div className="flex items-center justify-between p-4 rounded-2xl bg-ink-800 border border-ink-700 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-sm font-medium text-accent">
-                {creator.name.charAt(0)}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-ink-100">{creator.name}</p>
-                {creator.youtube_subscriber_count && (
-                  <p className="text-xs text-ink-500">
-                    {formatSubscriberCount(creator.youtube_subscriber_count)} subscribers
-                  </p>
-                )}
-              </div>
-            </div>
-            <a
-              href={`https://youtube.com/@${creator.youtube_channel_name}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-ink-500 hover:text-accent transition-colors"
-            >
-              <ExternalLink size={14} />
-            </a>
-          </div>
-
-          {/* Description */}
-          <div className="mb-8">
-            <p className="label">About this listing</p>
-            <p className="text-sm text-ink-300 leading-relaxed">{listing.description}</p>
-          </div>
-
-          {/* Buy button */}
-          <Link
-            href={`/checkout/${listing.id}`}
-            className="btn-primary w-full flex items-center justify-center py-3.5 text-sm rounded-xl"
-          >
-            Buy now — {formatPrice(listing.price)}
-          </Link>
-
-          <p className="text-center text-xs text-ink-600 mt-3">
-            Secure checkout via Stripe · Ships via Shiprocket
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
