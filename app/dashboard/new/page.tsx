@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Youtube, CheckCircle } from "lucide-react";
 import { CATEGORIES, cn } from "@/lib/utils";
 import { Category, Condition } from "@/types";
 import { extractVideoId } from "@/lib/youtube";
+import { supabase } from "@/lib/supabase";
 
 type Step = 1 | 2 | 3;
 
@@ -13,8 +14,9 @@ export default function NewListingPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState("");
-  const [videoMeta, setVideoMeta] = useState<{ title: string; thumbnail: string } | null>(null);
+  const [videoMeta, setVideoMeta] = useState<{ title: string; thumbnail: string; id: string } | null>(null);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -25,6 +27,15 @@ export default function NewListingPage() {
     timestamp: "",
   });
 
+  useEffect(() => {
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { window.location.href = "/login"; return; }
+      setUserId(session.user.id);
+    };
+    load();
+  }, []);
+
   const handleVideoLookup = async () => {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) return alert("Invalid YouTube URL");
@@ -32,33 +43,47 @@ export default function NewListingPage() {
     try {
       const res = await fetch(`/api/youtube/video?id=${videoId}`);
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setVideoMeta(data);
       setStep(2);
     } catch {
-      alert("Could not fetch video. Check the URL.");
+      alert("Could not fetch video. Check the URL and make sure your YouTube API key is set.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleSubmit = async () => {
+    if (!userId) return alert("Please log in first");
     setLoading(true);
     try {
-      const res = await fetch("/api/listings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          youtube_video_url: videoUrl,
-          youtube_video_title: videoMeta?.title,
-          youtube_video_thumbnail: videoMeta?.thumbnail,
-        }),
+      let timestampSeconds: number | null = null;
+      if (form.timestamp) {
+        const parts = form.timestamp.split(":").map(Number);
+        if (parts.length === 2) timestampSeconds = parts[0] * 60 + parts[1];
+        if (parts.length === 3) timestampSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+      }
+
+      const { error } = await supabase.from("listings").insert({
+        creator_id: userId,
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        condition: form.condition,
+        price: parseInt(form.price),
+        original_price: form.original_price ? parseInt(form.original_price) : null,
+        youtube_video_id: videoMeta!.id,
+        youtube_video_title: videoMeta!.title,
+        youtube_video_thumbnail: videoMeta!.thumbnail,
+        youtube_timestamp_seconds: timestampSeconds,
+        status: "active",
       });
-      if (!res.ok) throw new Error("Failed to create listing");
+
+      if (error) throw error;
       setStep(3);
       setTimeout(() => router.push("/dashboard"), 2000);
-    } catch {
-      alert("Something went wrong. Please try again.");
+    } catch (err: any) {
+      alert(err.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -77,7 +102,6 @@ export default function NewListingPage() {
         <h1 className="text-3xl font-medium text-ink-50">Create a listing</h1>
       </div>
 
-      {/* Progress */}
       <div className="flex items-center gap-2 mb-10">
         {([1, 2, 3] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
@@ -95,42 +119,29 @@ export default function NewListingPage() {
         </span>
       </div>
 
-      {/* Step 1 — Video URL */}
       {step === 1 && (
         <div className="space-y-6">
           <div className="card p-6 flex gap-3">
             <Youtube size={16} className="text-red-500 shrink-0 mt-0.5" />
             <p className="text-sm text-ink-300 leading-relaxed">
               Paste the YouTube link of the video where this product was featured.
-              Your channel will be verified automatically.
             </p>
           </div>
           <div>
             <label className="label">YouTube video URL</label>
-            <input
-              className="input"
-              placeholder="https://youtube.com/watch?v=..."
-              value={videoUrl}
-              onChange={(e) => setVideoUrl(e.target.value)}
-            />
+            <input className="input" placeholder="https://youtube.com/watch?v=..." value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
           </div>
-          <button
-            onClick={handleVideoLookup}
-            disabled={!videoUrl || loading}
-            className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
-          >
+          <button onClick={handleVideoLookup} disabled={!videoUrl || loading} className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50">
             {loading ? <Loader2 size={15} className="animate-spin" /> : null}
             Verify video
           </button>
         </div>
       )}
 
-      {/* Step 2 — Listing details */}
       {step === 2 && (
         <div className="space-y-6">
           {videoMeta && (
             <div className="card overflow-hidden flex gap-4 p-4 items-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={videoMeta.thumbnail} alt="" className="w-24 h-16 object-cover rounded-lg shrink-0" />
               <div className="min-w-0">
                 <p className="text-xs text-ink-500 mb-0.5">Linked video</p>
@@ -146,36 +157,20 @@ export default function NewListingPage() {
 
           <div>
             <label className="label">Description</label>
-            <textarea
-              className="input resize-none h-24"
-              placeholder="Describe the condition, what's included, how long you used it..."
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
+            <textarea className="input resize-none h-24" placeholder="Describe the condition, what's included, how long you used it..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Category</label>
-              <select
-                className="input"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
-              >
+              <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as Category })}>
                 <option value="">Select...</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
+                {CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
               </select>
             </div>
             <div>
               <label className="label">Video timestamp (optional)</label>
-              <input
-                className="input"
-                placeholder="e.g. 2:30"
-                value={form.timestamp}
-                onChange={(e) => setForm({ ...form, timestamp: e.target.value })}
-              />
+              <input className="input" placeholder="e.g. 2:30" value={form.timestamp} onChange={(e) => setForm({ ...form, timestamp: e.target.value })} />
             </div>
           </div>
 
@@ -183,16 +178,10 @@ export default function NewListingPage() {
             <label className="label">Condition</label>
             <div className="grid grid-cols-3 gap-3">
               {CONDITIONS.map((c) => (
-                <button
-                  key={c.value}
-                  onClick={() => setForm({ ...form, condition: c.value })}
-                  className={cn(
-                    "p-3 rounded-xl border text-left transition-all",
-                    form.condition === c.value
-                      ? "border-accent bg-accent/10"
-                      : "border-ink-700 bg-ink-800 hover:border-ink-500"
-                  )}
-                >
+                <button key={c.value} onClick={() => setForm({ ...form, condition: c.value })}
+                  className={cn("p-3 rounded-xl border text-left transition-all",
+                    form.condition === c.value ? "border-accent bg-accent/10" : "border-ink-700 bg-ink-800 hover:border-ink-500"
+                  )}>
                   <p className={cn("text-xs font-medium mb-0.5", form.condition === c.value ? "text-accent" : "text-ink-200")}>{c.label}</p>
                   <p className="text-[10px] text-ink-500">{c.desc}</p>
                 </button>
@@ -224,18 +213,14 @@ export default function NewListingPage() {
             </div>
           )}
 
-          <button
-            onClick={handleSubmit}
-            disabled={!form.title || !form.price || !form.category || loading}
-            className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
-          >
+          <button onClick={handleSubmit} disabled={!form.title || !form.price || !form.category || loading}
+            className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50">
             {loading ? <Loader2 size={15} className="animate-spin" /> : null}
             Publish listing
           </button>
         </div>
       )}
 
-      {/* Step 3 — Success */}
       {step === 3 && (
         <div className="text-center py-16">
           <CheckCircle size={40} className="text-accent mx-auto mb-4" />
